@@ -1,11 +1,20 @@
 import os
 import random
 import time
+import re
+import json
+import tempfile
+import logging
+from base64 import b64decode
+from datetime import datetime as dt
 from shutil import which
+from typing import Optional, Dict, Any
 
+import requests
 from selenium import webdriver
 from selenium.webdriver import ActionChains
 from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait, Select
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import (
@@ -14,6 +23,15 @@ from selenium.common.exceptions import (
     StaleElementReferenceException,
     WebDriverException,
 )
+
+# Try to import anticaptcha, but make it optional
+try:
+    from anticaptchaofficial.imagecaptcha import imagecaptcha
+    from anticaptchaofficial.recaptchav3proxyless import recaptchaV3Proxyless
+    ANTICAPTCHA_AVAILABLE = True
+except ImportError:
+    ANTICAPTCHA_AVAILABLE = False
+    print("Warning: anticaptcha not available. Install with: pip install anticaptchaofficial")
 
 # -------------------------
 # Config
@@ -24,11 +42,17 @@ PROVINCE = "Barcelona"  # change if needed
 NIE = "Z324402S"
 FULL_NAME = "MARBELLA CONTRERAS GUANIPA"
 PAIS_VALUE = "248"  # VENEZUELA
+PHONE = "600000000"  # Phone number
+EMAIL = "myemail@here.com"  # Email
 
 MAX_RETRIES = 500
 WAIT_SECS = 30  # explicit wait
 TRANSITION_TIMEOUT = 20  # how long to wait for nav/DOM change after a click
 DOM_SIG_DELTA = 50       # minimum DOM length delta to consider "changed"
+
+# Anticaptcha API key - REQUIRED for automatic captcha solving
+ANTICAPTCHA_API_KEY = "your_api_key_here"  # Get from https://anti-captcha.com/
+AUTO_CAPTCHA = True  # Set to False for manual captcha solving
 
 # -------------------------
 # Speakers
@@ -100,7 +124,7 @@ def start_driver():
     opts.add_argument("--disable-blink-features=AutomationControlled")
     opts.add_experimental_option("excludeSwitches", ["enable-automation"])
     opts.add_experimental_option("useAutomationExtension", False)
-    # Optional: look more “human” with a separate profile
+    # Optional: look more "human" with a separate profile
     opts.add_argument(f"--user-data-dir={os.path.expanduser('~')}/.selenium-icp-profile")
 
     driver = webdriver.Chrome(options=opts)
@@ -193,6 +217,102 @@ def handle_cookies_if_any(driver, wait):
     # Accept cookie banner here if one appears (region dependent)
     pass
 
+def get_body_text(driver):
+    try:
+        return driver.find_element(By.TAG_NAME, "body").text
+    except Exception:
+        return ""
+
+# -------------------------
+# Captcha handling
+# -------------------------
+def process_captcha(driver):
+    if not AUTO_CAPTCHA:
+        print("Manual captcha solving required. Solve the captcha and press ENTER...")
+        for i in range(10):
+            if new_speaker():
+                new_speaker().say("ALARM")
+        input()
+        return True
+
+    if not ANTICAPTCHA_AVAILABLE:
+        print("Anticaptcha not available. Please install: pip install anticaptchaofficial")
+        return False
+
+    if not ANTICAPTCHA_API_KEY or ANTICAPTCHA_API_KEY == "your_api_key_here":
+        print("Anticaptcha API key not set. Please set ANTICAPTCHA_API_KEY variable.")
+        return False
+
+    # Check for reCAPTCHA
+    if len(driver.find_elements(By.ID, "reCAPTCHA_site_key")) > 0:
+        return solve_recaptcha(driver)
+    # Check for image captcha
+    elif len(driver.find_elements(By.CSS_SELECTOR, "img.img-thumbnail")) > 0:
+        return solve_image_captcha(driver)
+    else:
+        return True
+
+def solve_recaptcha(driver):
+    try:
+        site_key = driver.find_element(By.ID, "reCAPTCHA_site_key").get_attribute("value")
+        page_action = driver.find_element(By.ID, "action").get_attribute("value")
+        print(f"Solving reCAPTCHA: site_key={site_key}, action={page_action}")
+
+        solver = recaptchaV3Proxyless()
+        solver.set_verbose(1)
+        solver.set_key(ANTICAPTCHA_API_KEY)
+        solver.set_website_url("https://icp.administracionelectronica.gob.es")
+        solver.set_website_key(site_key)
+        solver.set_page_action(page_action)
+        solver.set_min_score(0.9)
+
+        g_response = solver.solve_and_return_solution()
+        if g_response != 0:
+            print(f"reCAPTCHA solved: {g_response}")
+            driver.execute_script(
+                f"document.getElementById('g-recaptcha-response').value = '{g_response}'"
+            )
+            return True
+        else:
+            print(f"reCAPTCHA failed: {solver.err_string}")
+            return False
+    except Exception as e:
+        print(f"Error solving reCAPTCHA: {e}")
+        return False
+
+def solve_image_captcha(driver):
+    try:
+        img = driver.find_elements(By.CSS_SELECTOR, "img.img-thumbnail")[0]
+        tmp = tempfile.NamedTemporaryFile(delete=False)
+        tmp.write(b64decode(img.get_attribute("src").split(",")[1].strip()))
+        tmp.close()
+
+        solver = imagecaptcha()
+        solver.set_verbose(1)
+        solver.set_key(ANTICAPTCHA_API_KEY)
+
+        captcha_result = solver.solve_and_return_solution(tmp.name)
+        if captcha_result != 0:
+            print(f"Image captcha solved: {captcha_result}")
+            element = driver.find_element(By.ID, "captcha")
+            element.send_keys(captcha_result)
+            os.unlink(tmp.name)
+            return True
+        else:
+            print(f"Image captcha failed: {solver.err_string}")
+            os.unlink(tmp.name)
+            return False
+    except Exception as e:
+        print(f"Error solving image captcha: {e}")
+        try:
+            os.unlink(tmp.name)
+        except:
+            pass
+        return False
+
+# -------------------------
+# Main flow functions
+# -------------------------
 def select_province_and_accept(driver, wait):
     driver.get(START_URL)
     wait_ready(wait)
@@ -306,47 +426,331 @@ def fill_acEntrada_and_submit(driver, wait):
     # Otherwise consider OK (e.g., acCitar or next step)
     return "ok"
 
-def run_flow_once(keep_open_on_success=False):
+def wait_for_btnConsultar(driver, wait):
+    """Wait for the 'Consultar' button to appear after personal info submission"""
+    try:
+        WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.ID, "btnConsultar")))
+        return True
+    except TimeoutException:
+        print("Timeout waiting for Consultar button")
+        return False
+
+def click_btnConsultar(driver, wait):
+    """Click the Consultar button to proceed to office selection"""
+    try:
+        btn_consultar = driver.find_element(By.ID, "btnConsultar")
+        btn_consultar.click()
+        wait_ready(wait)
+        return True
+    except Exception as e:
+        print(f"Error clicking Consultar button: {e}")
+        return False
+
+def office_selection(driver, wait):
+    """Handle office selection step"""
+    print("[Step 2/6] Office selection")
+    
+    # Wait for office selection page
+    try:
+        WebDriverWait(driver, WAIT_SECS).until(
+            EC.presence_of_element_located((By.ID, "idSede"))
+        )
+    except TimeoutException:
+        print("Timeout waiting for office selection page")
+        return False
+
+    # Select a random office (you can customize this logic)
+    try:
+        office_select = Select(driver.find_element(By.ID, "idSede"))
+        # Skip first option if it's empty
+        start_index = 1 if office_select.options[0].get_attribute("value") == "" else 0
+        if len(office_select.options) > start_index:
+            random_index = random.randint(start_index, len(office_select.options) - 1)
+            office_select.select_by_index(random_index)
+            print(f"Selected office: {office_select.options[random_index].text}")
+        else:
+            print("No offices available")
+            return False
+    except Exception as e:
+        print(f"Error selecting office: {e}")
+        return False
+
+    # Click next button
+    try:
+        btn_siguiente = WebDriverWait(driver, WAIT_SECS).until(
+            EC.element_to_be_clickable((By.ID, "btnSiguiente"))
+        )
+        btn_siguiente.click()
+        wait_ready(wait)
+        return True
+    except Exception as e:
+        print(f"Error clicking siguiente button: {e}")
+        return False
+
+def contact_info(driver, wait):
+    """Handle contact information step"""
+    print("[Step 3/6] Contact info")
+    
+    try:
+        # Wait for contact info page
+        phone_field = WebDriverWait(driver, WAIT_SECS).until(
+            EC.presence_of_element_located((By.ID, "txtTelefonoCitado"))
+        )
+        
+        # Fill phone number
+        phone_field.clear()
+        phone_field.send_keys(PHONE)
+        
+        # Fill email fields if they exist
+        try:
+            email_uno = driver.find_element(By.ID, "emailUNO")
+            email_uno.clear()
+            email_uno.send_keys(EMAIL)
+            
+            email_dos = driver.find_element(By.ID, "emailDOS")
+            email_dos.clear()
+            email_dos.send_keys(EMAIL)
+        except Exception:
+            pass  # Email fields might not exist
+        
+        # Submit contact info
+        driver.execute_script("enviar();")
+        wait_ready(wait)
+        return True
+        
+    except Exception as e:
+        print(f"Error in contact info step: {e}")
+        return False
+
+def cita_selection(driver, wait):
+    """Handle cita (appointment) selection step"""
+    print("[Step 4/6] Cita selection")
+    
+    resp_text = get_body_text(driver)
+    
+    if "DISPONE DE 5 MINUTOS" in resp_text:
+        print("Found appointment slots with 5-minute timer!")
+        return handle_timer_slots(driver, wait)
+    elif "Seleccione una de las siguientes citas disponibles" in resp_text:
+        print("Found appointment slots with time selection!")
+        return handle_time_slots(driver, wait)
+    else:
+        print("No appointment slots found")
+        return False
+
+def handle_timer_slots(driver, wait):
+    """Handle slots with 5-minute timer"""
+    try:
+        # Find available slots
+        slot_elements = driver.find_elements(By.CSS_SELECTOR, "input[type='radio'][name='rdbCita']")
+        if not slot_elements:
+            print("No slot elements found")
+            return False
+        
+        # Select first available slot
+        slot_elements[0].click()
+        print("Selected first available slot")
+        
+        # Process captcha if needed
+        if not process_captcha(driver):
+            return False
+        
+        # Submit selection
+        driver.execute_script("envia();")
+        time.sleep(0.5)
+        
+        # Handle alert if present
+        try:
+            alert = driver.switch_to.alert
+            alert.accept()
+        except Exception:
+            pass
+        
+        return True
+        
+    except Exception as e:
+        print(f"Error handling timer slots: {e}")
+        return False
+
+def handle_time_slots(driver, wait):
+    """Handle slots with time selection"""
+    try:
+        # Find date headers
+        date_elements = driver.find_elements(By.CSS_SELECTOR, "#CitaMAP_HORAS thead [class^=colFecha]")
+        if not date_elements:
+            print("No date elements found")
+            return False
+        
+        dates = [el.text for el in date_elements]
+        print(f"Available dates: {dates}")
+        
+        # Find first available slot
+        slot_table = driver.find_element(By.CSS_SELECTOR, "#CitaMAP_HORAS tbody")
+        slot_found = False
+        
+        for row in slot_table.find_elements(By.CSS_SELECTOR, "tr"):
+            if slot_found:
+                break
+                
+            for idx, cell in enumerate(row.find_elements(By.TAG_NAME, "td")):
+                if idx >= len(dates):
+                    continue
+                    
+                try:
+                    slot_element = cell.find_element(By.CSS_SELECTOR, "[id^=HUECO]")
+                    slot_id = slot_element.get_attribute("id")
+                    if slot_id:
+                        print(f"Found slot: {slot_id} for date: {dates[idx]}")
+                        
+                        # Process captcha if needed
+                        if not process_captcha(driver):
+                            return False
+                        
+                        # Confirm slot
+                        driver.execute_script(f"confirmarHueco({{id: '{slot_id}'}}, {slot_id[5:]});")
+                        
+                        # Handle alert if present
+                        try:
+                            alert = driver.switch_to.alert
+                            alert.accept()
+                        except Exception:
+                            pass
+                        
+                        slot_found = True
+                        break
+                        
+                except Exception:
+                    continue
+        
+        return slot_found
+        
+    except Exception as e:
+        print(f"Error handling time slots: {e}")
+        return False
+
+def confirmation_step(driver, wait):
+    """Handle the final confirmation step"""
+    print("[Step 5/6] Confirmation")
+    
+    resp_text = get_body_text(driver)
+    
+    if "Debe confirmar los datos de la cita asignada" in resp_text:
+        print("Appointment confirmation page found!")
+        
+        # Check if SMS verification is required
+        try:
+            sms_field = driver.find_element(By.ID, "txtCodigoVerificacion")
+            print("SMS verification required")
+            
+            # For now, we'll ask for manual input
+            # In a full implementation, you could integrate with SMS webhook services
+            print("Please enter the SMS code manually:")
+            sms_code = input("SMS Code: ")
+            sms_field.send_keys(sms_code)
+            
+        except Exception:
+            print("No SMS verification required")
+        
+        # Confirm appointment
+        try:
+            # Check required checkboxes
+            try:
+                chk_total = driver.find_element(By.ID, "chkTotal")
+                if not chk_total.is_selected():
+                    chk_total.click()
+            except Exception:
+                pass
+            
+            try:
+                chk_email = driver.find_element(By.ID, "enviarCorreo")
+                if not chk_email.is_selected():
+                    chk_email.click()
+            except Exception:
+                pass
+            
+            # Click confirm button
+            btn_confirmar = driver.find_element(By.ID, "btnConfirmar")
+            btn_confirmar.click()
+            wait_ready(wait)
+            
+            # Check final result
+            final_text = get_body_text(driver)
+            if "CITA CONFIRMADA Y GRABADA" in final_text:
+                print("✅ APPOINTMENT CONFIRMED SUCCESSFULLY!")
+                return "success"
+            else:
+                print("Appointment confirmation failed")
+                return "failed"
+                
+        except Exception as e:
+            print(f"Error confirming appointment: {e}")
+            return "error"
+    
+    else:
+        print("Not on confirmation page")
+        return "not_confirmation"
+
+def run_complete_flow_once(keep_open_on_success=False):
     """
+    Runs the complete cita flow once
     Returns (outcome, driver_or_none)
-      outcome in:
-        'ok'           -> success (moved beyond acEntrada & not acValidarEntrada)
-        'validate'     -> landed on /acValidarEntrada (retry)
-        'timeout'      -> session timeout page (infogenerica)
-        'rejected'     -> WAF "Request Rejected"
-        'rate_limited' -> 429 Too Many Requests
-        'no_transition'-> clicked but no nav/DOM change (or re-render same page)
-        'error'        -> other exceptions
     """
     driver = None
     try:
         driver = start_driver()
         wait = WebDriverWait(driver, WAIT_SECS)
 
+        # Step 1: Select province and accept
         if not select_province_and_accept(driver, wait):
             driver.quit(); return "no_transition", None
         if is_request_rejected(driver): driver.quit(); return "rejected", None
         if is_rate_limited_429(driver): driver.quit(); return "rate_limited", None
 
+        # Step 2: Select trámite and accept
         if not select_last_tramite_and_accept(driver, wait):
             driver.quit(); return "no_transition", None
         if is_request_rejected(driver): driver.quit(); return "rejected", None
         if is_rate_limited_429(driver): driver.quit(); return "rate_limited", None
 
+        # Step 3: Go to acEntrada via acInfo
         if not go_to_acEntrada_via_acInfo(driver, wait):
             driver.quit(); return "no_transition", None
         if "infogenerica" in driver.current_url: driver.quit(); return "timeout", None
         if is_request_rejected(driver): driver.quit(); return "rejected", None
         if is_rate_limited_429(driver): driver.quit(); return "rate_limited", None
 
+        # Step 4: Fill personal info and submit
         result = fill_acEntrada_and_submit(driver, wait)
-        if result == "ok":
-            if keep_open_on_success:
-                return "ok", driver
-            driver.quit(); return "ok", None
-        else:
-            # any non-ok -> close and report
+        if result != "ok":
             driver.quit(); return result, None
+
+        # Step 5: Wait for Consultar button and click it
+        if not wait_for_btnConsultar(driver, wait):
+            driver.quit(); return "no_consultar", None
+        
+        if not click_btnConsultar(driver, wait):
+            driver.quit(); return "no_consultar_click", None
+
+        # Step 6: Office selection
+        if not office_selection(driver, wait):
+            driver.quit(); return "office_selection_failed", None
+
+        # Step 7: Contact info
+        if not contact_info(driver, wait):
+            driver.quit(); return "contact_info_failed", None
+
+        # Step 8: Cita selection
+        if not cita_selection(driver, wait):
+            driver.quit(); return "cita_selection_failed", None
+
+        # Step 9: Confirmation
+        confirmation_result = confirmation_step(driver, wait)
+        if confirmation_result == "success":
+            if keep_open_on_success:
+                return "success", driver
+            driver.quit(); return "success", None
+        else:
+            driver.quit(); return confirmation_result, None
 
     except (WebDriverException, TimeoutException) as e:
         print(f"[error] Flow exception: {e}")
@@ -357,16 +761,27 @@ def run_flow_once(keep_open_on_success=False):
         return "error", None
 
 def main():
+    # Check anticaptcha setup
+    if AUTO_CAPTCHA and not ANTICAPTCHA_AVAILABLE:
+        print("Error: AUTO_CAPTCHA is True but anticaptcha is not available")
+        print("Install with: pip install anticaptchaofficial")
+        return
+    
+    if AUTO_CAPTCHA and (not ANTICAPTCHA_API_KEY or ANTICAPTCHA_API_KEY == "your_api_key_here"):
+        print("Error: AUTO_CAPTCHA is True but ANTICAPTCHA_API_KEY is not set")
+        print("Please set your API key from https://anti-captcha.com/")
+        return
+
     last_backoff = 0.0
     for attempt in range(1, MAX_RETRIES + 1):
         print(f"--- Attempt {attempt}/{MAX_RETRIES} ---")
-        outcome, driver = run_flow_once(keep_open_on_success=True)
+        outcome, driver = run_complete_flow_once(keep_open_on_success=True)
         print(f"[info] Outcome: {outcome}")
 
-        if outcome == "ok" and driver is not None:
-            print("success")
+        if outcome == "success" and driver is not None:
+            print("🎉 SUCCESS! Appointment confirmed!")
             play_alarm("success", 30)
-            print("✅ Browser left OPEN for manual intervention. Press Ctrl+C here to end the script (will close the driver).")
+            print("✅ Browser left OPEN. Press Ctrl+C here to end the script (will close the driver).")
             try:
                 while True:
                     time.sleep(3600)  # keep process alive
@@ -388,7 +803,6 @@ def main():
     print("[fatal] Reached max retries without success.")
     print("failure")
     play_alarm("failure", 30)
-
 
 if __name__ == "__main__":
     main()

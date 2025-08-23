@@ -1,0 +1,23 @@
+# Requirements for the Optimized Cita Bot
+# Install with: pip install -r requirements_optimized.txt
+
+# Core web automation
+selenium>=4.1.0
+
+# Captcha solving service
+anticaptchaofficial>=1.0.31
+
+# HTTP requests
+requests>=2.26.0
+
+# Date/time handling
+python-dateutil>=2.8.0
+
+# Optional: For better logging
+colorama>=0.4.0
+
+# Optional: For environment variable management
+python-dotenv>=0.19.0
+
+# Optional: For progress bars
+tqdm>=4.62.0 
