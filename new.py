@@ -47,30 +47,16 @@ except ImportError:
 # -------------------------
 START_URL = "https://icp.administracionelectronica.gob.es/icpplustiem/index.html"
 
-# Personal Information
-NIE = CONFIG["NIE"]
-FULL_NAME = CONFIG["FULL_NAME"]
-PAIS_VALUE = CONFIG["PAIS_VALUE"]  # VENEZUELA
-PHONE = CONFIG["PHONE"]  # Phone number
-EMAIL = CONFIG["EMAIL"]  # Email
-
-# Bot Settings
-PROVINCE = CONFIG["PROVINCE"]
-MAX_RETRIES = CONFIG["MAX_RETRIES"]
-WAIT_SECS = CONFIG["WAIT_SECS"]  # explicit wait
-TRANSITION_TIMEOUT = CONFIG["TRANSITION_TIMEOUT"]  # how long to wait for nav/DOM change after a click
-DOM_SIG_DELTA = CONFIG["DOM_SIG_DELTA"]       # minimum DOM length delta to consider "changed"
-
 # Configuration function to read from environment variables
 def get_config():
     """Get configuration from environment variables with fallbacks"""
     config = {
         # Personal Information
-        "NIE": os.environ.get("NIE", "Z324402S"),
-        "FULL_NAME": os.environ.get("FULL_NAME", "MARBELLA CONTRERAS GUANIPA"),
+        "NIE": os.environ.get("NIE"),
+        "FULL_NAME": os.environ.get("FULL_NAME"),
         "PAIS_VALUE": os.environ.get("PAIS_VALUE", "248"),
-        "PHONE": os.environ.get("PHONE", "600000000"),
-        "EMAIL": os.environ.get("EMAIL", "myemail@here.com"),
+        "PHONE": os.environ.get("PHONE"),
+        "EMAIL": os.environ.get("EMAIL"),
         
         # Bot Settings
         "PROVINCE": os.environ.get("PROVINCE", "Barcelona"),
@@ -88,6 +74,20 @@ def get_config():
 
 # Load configuration
 CONFIG = get_config()
+
+# Personal Information
+NIE = CONFIG["NIE"]
+FULL_NAME = CONFIG["FULL_NAME"]
+PAIS_VALUE = CONFIG["PAIS_VALUE"]  # VENEZUELA
+PHONE = CONFIG["PHONE"]  # Phone number
+EMAIL = CONFIG["EMAIL"]  # Email
+
+# Bot Settings
+PROVINCE = CONFIG["PROVINCE"]
+MAX_RETRIES = CONFIG["MAX_RETRIES"]
+WAIT_SECS = CONFIG["WAIT_SECS"]  # explicit wait
+TRANSITION_TIMEOUT = CONFIG["TRANSITION_TIMEOUT"]  # how long to wait for nav/DOM change after a click
+DOM_SIG_DELTA = CONFIG["DOM_SIG_DELTA"]       # minimum DOM length delta to consider "changed"
 
 # Anticaptcha API key - Read from environment variable
 ANTICAPTCHA_API_KEY = CONFIG["ANTICAPTCHA_API_KEY"]
