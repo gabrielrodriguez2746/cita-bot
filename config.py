@@ -1,28 +1,39 @@
 # Configuration file for the Cita Bot
-# Copy this file and modify it with your personal information
+# This file provides fallback values, but environment variables take precedence
+# Copy this file and modify it with your personal information, or use environment variables
+
+import os
+
+# Try to load environment variables from .env file
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+    DOTENV_AVAILABLE = True
+except ImportError:
+    DOTENV_AVAILABLE = False
 
 # Personal Information
 PERSONAL_INFO = {
-    "NIE": "Z324402S",  # Your NIE number
-    "FULL_NAME": "MARBELLA CONTRERAS GUANIPA",  # Your full name
-    "PAIS_VALUE": "248",  # Country code (248 = Venezuela)
-    "PHONE": "600000000",  # Your phone number
-    "EMAIL": "myemail@here.com",  # Your email address
+    "NIE": os.environ.get("NIE", "Z324402S"),  # Your NIE number
+    "FULL_NAME": os.environ.get("FULL_NAME", "MARBELLA CONTRERAS GUANIPA"),  # Your full name
+    "PAIS_VALUE": os.environ.get("PAIS_VALUE", "248"),  # Country code (248 = Venezuela)
+    "PHONE": os.environ.get("PHONE", "600000000"),  # Your phone number
+    "EMAIL": os.environ.get("EMAIL", "myemail@here.com"),  # Your email address
 }
 
 # Bot Settings
 BOT_SETTINGS = {
-    "PROVINCE": "Barcelona",  # Province for appointment
-    "MAX_RETRIES": 500,  # Maximum number of attempts
-    "WAIT_SECS": 30,  # Explicit wait time for elements
-    "TRANSITION_TIMEOUT": 20,  # Timeout for page transitions
-    "DOM_SIG_DELTA": 50,  # Minimum DOM change to detect transition
+    "PROVINCE": os.environ.get("PROVINCE", "Barcelona"),  # Province for appointment
+    "MAX_RETRIES": int(os.environ.get("MAX_RETRIES", "500")),  # Maximum number of attempts
+    "WAIT_SECS": int(os.environ.get("WAIT_SECS", "30")),  # Explicit wait time for elements
+    "TRANSITION_TIMEOUT": int(os.environ.get("TRANSITION_TIMEOUT", "20")),  # Timeout for page transitions
+    "DOM_SIG_DELTA": int(os.environ.get("DOM_SIG_DELTA", "50")),  # Minimum DOM change to detect transition
 }
 
 # Captcha Settings
 CAPTCHA_SETTINGS = {
-    "ANTICAPTCHA_API_KEY": "your_api_key_here",  # Get from https://anti-captcha.com/
-    "AUTO_CAPTCHA": True,  # Set to False for manual captcha solving
+    "ANTICAPTCHA_API_KEY": os.environ.get("ANTICAPTCHA_API_KEY"),  # Get from https://anti-captcha.com/
+    "AUTO_CAPTCHA": os.environ.get("AUTO_CAPTCHA", "True").lower() == "true",  # Set to False for manual captcha solving
 }
 
 # Office Preferences (optional)

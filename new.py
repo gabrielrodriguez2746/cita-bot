@@ -10,6 +10,15 @@ from datetime import datetime as dt
 from shutil import which
 from typing import Optional, Dict, Any
 
+# Try to load environment variables from .env file
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+    DOTENV_AVAILABLE = True
+except ImportError:
+    DOTENV_AVAILABLE = False
+    print("Note: python-dotenv not available. Install with: pip install python-dotenv")
+
 import requests
 from selenium import webdriver
 from selenium.webdriver import ActionChains
@@ -37,22 +46,52 @@ except ImportError:
 # Config
 # -------------------------
 START_URL = "https://icp.administracionelectronica.gob.es/icpplustiem/index.html"
-PROVINCE = "Barcelona"  # change if needed
 
-NIE = "Z324402S"
-FULL_NAME = "MARBELLA CONTRERAS GUANIPA"
-PAIS_VALUE = "248"  # VENEZUELA
-PHONE = "600000000"  # Phone number
-EMAIL = "myemail@here.com"  # Email
+# Personal Information
+NIE = CONFIG["NIE"]
+FULL_NAME = CONFIG["FULL_NAME"]
+PAIS_VALUE = CONFIG["PAIS_VALUE"]  # VENEZUELA
+PHONE = CONFIG["PHONE"]  # Phone number
+EMAIL = CONFIG["EMAIL"]  # Email
 
-MAX_RETRIES = 500
-WAIT_SECS = 30  # explicit wait
-TRANSITION_TIMEOUT = 20  # how long to wait for nav/DOM change after a click
-DOM_SIG_DELTA = 50       # minimum DOM length delta to consider "changed"
+# Bot Settings
+PROVINCE = CONFIG["PROVINCE"]
+MAX_RETRIES = CONFIG["MAX_RETRIES"]
+WAIT_SECS = CONFIG["WAIT_SECS"]  # explicit wait
+TRANSITION_TIMEOUT = CONFIG["TRANSITION_TIMEOUT"]  # how long to wait for nav/DOM change after a click
+DOM_SIG_DELTA = CONFIG["DOM_SIG_DELTA"]       # minimum DOM length delta to consider "changed"
 
-# Anticaptcha API key - REQUIRED for automatic captcha solving
-ANTICAPTCHA_API_KEY = "your_api_key_here"  # Get from https://anti-captcha.com/
-AUTO_CAPTCHA = True  # Set to False for manual captcha solving
+# Configuration function to read from environment variables
+def get_config():
+    """Get configuration from environment variables with fallbacks"""
+    config = {
+        # Personal Information
+        "NIE": os.environ.get("NIE", "Z324402S"),
+        "FULL_NAME": os.environ.get("FULL_NAME", "MARBELLA CONTRERAS GUANIPA"),
+        "PAIS_VALUE": os.environ.get("PAIS_VALUE", "248"),
+        "PHONE": os.environ.get("PHONE", "600000000"),
+        "EMAIL": os.environ.get("EMAIL", "myemail@here.com"),
+        
+        # Bot Settings
+        "PROVINCE": os.environ.get("PROVINCE", "Barcelona"),
+        "MAX_RETRIES": int(os.environ.get("MAX_RETRIES", "500")),
+        "WAIT_SECS": int(os.environ.get("WAIT_SECS", "30")),
+        "TRANSITION_TIMEOUT": int(os.environ.get("TRANSITION_TIMEOUT", "20")),
+        "DOM_SIG_DELTA": int(os.environ.get("DOM_SIG_DELTA", "50")),
+        
+        # Captcha Settings
+        "ANTICAPTCHA_API_KEY": os.environ.get("ANTICAPTCHA_API_KEY"),
+        "AUTO_CAPTCHA": os.environ.get("AUTO_CAPTCHA", "True").lower() == "true",
+    }
+    
+    return config
+
+# Load configuration
+CONFIG = get_config()
+
+# Anticaptcha API key - Read from environment variable
+ANTICAPTCHA_API_KEY = CONFIG["ANTICAPTCHA_API_KEY"]
+AUTO_CAPTCHA = CONFIG["AUTO_CAPTCHA"]
 
 # -------------------------
 # Speakers
@@ -767,9 +806,12 @@ def main():
         print("Install with: pip install anticaptchaofficial")
         return
     
-    if AUTO_CAPTCHA and (not ANTICAPTCHA_API_KEY or ANTICAPTCHA_API_KEY == "your_api_key_here"):
-        print("Error: AUTO_CAPTCHA is True but ANTICAPTCHA_API_KEY is not set")
-        print("Please set your API key from https://anti-captcha.com/")
+    if AUTO_CAPTCHA and not ANTICAPTCHA_API_KEY:
+        print("❌ Error: ANTICAPTCHA_API_KEY environment variable not set")
+        print("💡 Set it with: export ANTICAPTCHA_API_KEY='your_actual_key'")
+        print("💡 Or create a .env file with: ANTICAPTCHA_API_KEY=your_key")
+        print("🔑 Get your key from: https://anti-captcha.com/")
+        print("\nAlternatively, set AUTO_CAPTCHA=False for manual captcha solving")
         return
 
     last_backoff = 0.0

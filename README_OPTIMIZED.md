@@ -17,7 +17,7 @@ This is an optimized version of the cita bot that completes the entire appointme
 
 1. Install the required dependencies:
 ```bash
-pip install -r requirements.txt
+pip install -r requirements_optimized.txt
 ```
 
 2. Get an AntiCaptcha API key:
@@ -25,7 +25,48 @@ pip install -r requirements.txt
    - Create an account and add funds
    - Copy your API key
 
+3. **Quick Setup (Recommended):**
+   ```bash
+   python setup_env.py
+   ```
+   This interactive script will help you create a `.env` file with your configuration.
+
 ## Configuration
+
+### Method 1: Environment Variables (Recommended)
+
+1. **Set environment variables directly:**
+```bash
+export ANTICAPTCHA_API_KEY="your_actual_api_key_here"
+export NIE="YOUR_NIE_HERE"
+export FULL_NAME="YOUR_FULL_NAME"
+export PAIS_VALUE="YOUR_COUNTRY_CODE"
+export PHONE="YOUR_PHONE"
+export EMAIL="YOUR_EMAIL"
+export PROVINCE="Barcelona"
+```
+
+2. **Or create a `.env` file:**
+```bash
+# Copy the example file
+cp env.example .env
+
+# Edit .env with your actual values
+nano .env
+```
+
+Example `.env` file:
+```env
+ANTICAPTCHA_API_KEY=your_actual_api_key_here
+NIE=YOUR_NIE_HERE
+FULL_NAME=YOUR_FULL_NAME
+PAIS_VALUE=YOUR_COUNTRY_CODE
+PHONE=YOUR_PHONE
+EMAIL=YOUR_EMAIL
+PROVINCE=Barcelona
+```
+
+### Method 2: Configuration File
 
 1. Copy `config.py` and modify it with your personal information:
 ```python
@@ -43,7 +84,9 @@ CAPTCHA_SETTINGS = {
 }
 ```
 
-2. Or modify the variables directly in `new.py`:
+### Method 3: Direct Modification
+
+Or modify the variables directly in `new.py`:
 ```python
 NIE = "YOUR_NIE_HERE"
 FULL_NAME = "YOUR_FULL_NAME"
@@ -52,6 +95,13 @@ PHONE = "YOUR_PHONE"
 EMAIL = "YOUR_EMAIL"
 ANTICAPTCHA_API_KEY = "your_actual_api_key_here"
 ```
+
+### Environment Variable Priority
+
+The bot reads configuration in this order (highest to lowest priority):
+1. **Environment variables** (set with `export` or in `.env` file)
+2. **Configuration file** (`config.py`)
+3. **Default values** (hardcoded in `new.py`)
 
 ## Usage
 
@@ -134,7 +184,17 @@ Detailed logging shows progress through each step
    - Install: `pip install anticaptchaofficial`
 
 2. **"API key not set"**
-   - Set your AntiCaptcha API key in config.py or new.py
+   - Set your AntiCaptcha API key using one of these methods:
+     ```bash
+     # Method 1: Environment variable
+     export ANTICAPTCHA_API_KEY="your_actual_key"
+     
+     # Method 2: .env file
+     echo "ANTICAPTCHA_API_KEY=your_actual_key" > .env
+     
+     # Method 3: Edit config.py or new.py directly
+     ```
+   - Get your API key from: https://anti-captcha.com/
 
 3. **"Chrome driver not found"**
    - Install ChromeDriver: `brew install chromedriver` (macOS)

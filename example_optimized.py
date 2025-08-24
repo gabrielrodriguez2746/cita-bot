@@ -124,9 +124,14 @@ def main():
         run_bot()
     else:
         print("\n📝 Please modify the configuration and run again:")
-        print("1. Edit config.py with your personal information")
-        print("2. Set your AntiCaptcha API key")
-        print("3. Run this script again")
+        print("1. Set environment variables:")
+        print("   export ANTICAPTCHA_API_KEY='your_actual_key'")
+        print("   export NIE='your_nie'")
+        print("   export FULL_NAME='your_name'")
+        print("   # ... etc")
+        print("2. Or create a .env file (copy from env.example)")
+        print("3. Or edit config.py with your personal information")
+        print("4. Run this script again")
         print("\nOr run the bot directly with: python new.py")
 
 if __name__ == "__main__":
