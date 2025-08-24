@@ -1,4 +1,5 @@
 grab_*.py
+.env
 .vscode/
 .mypy_cache/
 __pycache__/
